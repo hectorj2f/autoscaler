@@ -1,24 +1,3 @@
-// +build linux
-
-/*
-Copyright 2017 The Kubernetes Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-// Version to be compiled in the linux environment. May cause compilation issues on
-// other OS.
-
 package konvoy
 
 import (
@@ -38,8 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"k8s.io/klog"
-
-
 )
 
 const (
@@ -120,9 +97,12 @@ func (konvoy *KonvoyCloudProvider) Pricing() (cloudprovider.PricingModel, errors
 	return nil, cloudprovider.ErrNotImplemented
 }
 
+
+
+
 // NodeGroupForNode returns the node group for the given node.
 func (konvoy *KonvoyCloudProvider) NodeGroupForNode(node *apiv1.Node) (cloudprovider.NodeGroup, error) {
-	nodeGroupName, err := konvoy.konvoyManager.GetNodeGroupForNode(node.ObjectMeta.Name)
+	nodeGroupName, err := konvoy.konvoyManager.GetNodeGroupForNode(node.Spec.ProviderID)
 	if err != nil {
 		return nil, err
 	}
@@ -199,13 +179,14 @@ func (nodeGroup *NodeGroup) Nodes() ([]cloudprovider.Instance, error) {
 		return instances, err
 	}
 	for _, node := range nodes {
-		instances = append(instances, cloudprovider.Instance{Id: ":////" + node})
+		instances = append(instances, cloudprovider.Instance{Id: "" + node})
 	}
 	return instances, nil
 }
 
 // DeleteNodes deletes the specified nodes from the node group.
 func (nodeGroup *NodeGroup) DeleteNodes(nodes []*apiv1.Node) error {
+	klog.Infof("DeleteNodes %v", nodes)
 	size, err := nodeGroup.konvoyManager.GetNodeGroupTargetSize(nodeGroup.Name)
 	if err != nil {
 		return err
@@ -214,7 +195,8 @@ func (nodeGroup *NodeGroup) DeleteNodes(nodes []*apiv1.Node) error {
 		return fmt.Errorf("min size reached, nodes will not be deleted")
 	}
 	for _, node := range nodes {
-		if err := nodeGroup.konvoyManager.RemoveNodeFromNodeGroup(nodeGroup.Name, node.ObjectMeta.Name); err != nil {
+		// FIXME: aws based
+		if err := nodeGroup.konvoyManager.RemoveNodeFromNodeGroup(nodeGroup.Name, node.Spec.ProviderID); err != nil {
 			return err
 		}
 	}
@@ -223,6 +205,7 @@ func (nodeGroup *NodeGroup) DeleteNodes(nodes []*apiv1.Node) error {
 
 // IncreaseSize increases NodeGroup size.
 func (nodeGroup *NodeGroup) IncreaseSize(delta int) error {
+	klog.Infof("IncreaseSize %v", delta)
 	if delta <= 0 {
 		return fmt.Errorf("size increase must be positive")
 	}
@@ -241,6 +224,7 @@ func (nodeGroup *NodeGroup) IncreaseSize(delta int) error {
 // number is different from the number of nodes registered in Kubernetes.
 func (nodeGroup *NodeGroup) TargetSize() (int, error) {
 	size, err := nodeGroup.konvoyManager.GetNodeGroupTargetSize(nodeGroup.Name)
+	klog.Infof("TargetSize() size: %v", size)
 	return int(size), err
 }
 
@@ -248,6 +232,7 @@ func (nodeGroup *NodeGroup) TargetSize() (int, error) {
 // doesn't permit to delete any existing node and can be used only to reduce the
 // request for new nodes that have not been yet fulfilled. Delta should be negative.
 func (nodeGroup *NodeGroup) DecreaseTargetSize(delta int) error {
+	klog.Infof("DecreaseTargetSize %v", delta)
 	if delta >= 0 {
 		return fmt.Errorf("size decrease must be negative")
 	}
@@ -297,6 +282,7 @@ func buildNodeGroup(value string, konvoyManager *KonvoyManager) (*NodeGroup, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse node group spec: %v", err)
 	}
+	klog.Infof("buildNodeGroup: value %v; %v; %v; %v", value, spec.MinSize, spec.MaxSize, spec.Name)
 
 	nodeGroup := &NodeGroup{
 		Name:               spec.Name,
@@ -327,6 +313,7 @@ func BuildKonvoy(opts config.AutoscalingOptions, do cloudprovider.NodeGroupDisco
 
 	externalClient := kubeclient.NewForConfigOrDie(externalConfig)
   konvoyManager := &KonvoyManager{
+		provisioner: "aws",
 		dynamicClient: dynamicClient,
     clusterName: opts.ClusterName,
     kubeClient: externalClient,

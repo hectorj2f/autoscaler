@@ -23,6 +23,7 @@ const (
 )
 
 type KonvoyManager struct {
+  provisioner string
   clusterName            string
   kubeClient kubeclient.Interface
   createNodeQueue        chan string
@@ -46,7 +47,11 @@ func (k *KonvoyManager) GetNodeNamesForNodeGroup(nodeGroup string) ([]string, er
   klog.V(2).Infof("List of nodes: %v", nodes)
 	result := make([]string, 0, len(nodes.Items))
 	for _, node := range nodes.Items {
-		result = append(result, node.ObjectMeta.Name)
+    if k.provisioner == "aws" {
+		  result = append(result, node.Spec.ProviderID)
+    } else {
+      result = append(result, node.ObjectMeta.Name)
+    }
 	}
 	return result, nil
 }
@@ -169,10 +174,18 @@ func (k *KonvoyManager) getNodeByName(name string) (*apiv1.Node, error) {
     klog.Warningf("Error listing nodes")
 		return nil, err
 	}
-  klog.V(2).Infof("List of nodes: %v", nodes)
+  //klog.V(2).Infof("List of nodes: %v", nodes)
 	for _, node := range nodes.Items {
-    if node.Name == name {
-      return &node, nil
+    if k.provisioner == "aws" {
+      if node.Spec.ProviderID == name {
+        klog.V(2).Infof("Get node by name: %v", name)
+        return &node, nil
+      }
+    } else {
+      if node.Name == name {
+        klog.V(2).Infof("Get node by name: %v", name)
+        return &node, nil
+      }
     }
 	}
 	return nil, nil
